@@ -26,9 +26,13 @@
 
 #include <std_micro_service.hpp>
 #include "microsvc_controller.hpp"
+#include "boost/date_time/posix_time/posix_time.hpp" //include all types plus i/o
+#include <cstdlib>
+#include <streambuf>
 
 using namespace web;
 using namespace http;
+using namespace boost::posix_time;
 
 void MicroserviceController::initRestOpHandlers() {
     _listener.support(methods::GET, std::bind(&MicroserviceController::handleGet, this, std::placeholders::_1));
@@ -39,18 +43,7 @@ void MicroserviceController::initRestOpHandlers() {
 }
 
 void MicroserviceController::handleGet(http_request message) {
-    auto path = requestPath(message);
-    if (!path.empty()) {
-        if (path[0] == "service" && path[1] == "test") {
-            auto response = json::value::object();
-            response["version"] = json::value::string("0.1.1");
-            response["status"] = json::value::string("ready!");
-            message.reply(status_codes::OK, response);
-        }
-    }
-    else {
-        message.reply(status_codes::NotFound);
-    }
+    message.reply(status_codes::NotImplemented, responseNotImpl(methods::POST));
 }
 
 void MicroserviceController::handlePatch(http_request message) {
@@ -62,7 +55,19 @@ void MicroserviceController::handlePut(http_request message) {
 }
 
 void MicroserviceController::handlePost(http_request message) {
-    message.reply(status_codes::NotImplemented, responseNotImpl(methods::POST));
+    auto path = requestPath(message);
+    if (!path.empty()) {
+        if (path[0] == "train") {
+            train(message);
+        } else if (path[0] == "predict") {
+            predict(message);
+        } else if (path[0] == "result") {
+            result(message);
+        }
+    }
+    else {
+        message.reply(status_codes::NotFound);
+    }
 }
 
 void MicroserviceController::handleDelete(http_request message) {    
@@ -91,7 +96,92 @@ void MicroserviceController::handleMerge(http_request message) {
 
 json::value MicroserviceController::responseNotImpl(const http::method & method) {
     auto response = json::value::object();
-    response["serviceName"] = json::value::string("C++ Mircroservice Sample");
+    response["error"] = json::value::string("Method not defined");
     response["http_method"] = json::value::string(method);
     return response ;
+}
+
+void MicroserviceController::train(http_request message) {
+    message.extract_json().then([=](json::value request) {
+        try {
+            auto filename = genFilename("train");
+            auto data = request.at("data").as_array();
+            std::ofstream content(filename);
+            for (auto elem: data) {
+                auto line = elem.as_string();
+                content << line << std::endl;
+            }
+            content.close();
+
+            int fail = std::system((std::string("pachctl put file training@master:") + filename + std::string(" -f ") + filename).c_str());
+            if(!fail) {
+                auto response = json::value::object();
+                response["filename"] = json::value::string(filename);
+                message.reply(status_codes::OK, response);
+            } else {
+                message.reply(status_codes::InternalError);
+            }
+        } catch(json::json_exception & e) {
+            message.reply(status_codes::BadRequest);
+        }
+    });
+}
+
+void MicroserviceController::predict(http_request message) {
+    message.extract_json().then([=](json::value request) {
+        try {
+            auto filename = genFilename("predict");
+            auto data = request.at("data").as_array();
+            std::ofstream content(filename);
+            for (auto elem: data) {
+                auto line = elem.as_string();
+                content << line << std::endl;
+            }
+            content.close();
+
+            int fail = std::system((std::string("pachctl put file streaming@master:") + filename + std::string(" -f ") + filename).c_str());
+            if(!fail) {
+                auto response = json::value::object();
+                response["filename"] = json::value::string(filename);
+                message.reply(status_codes::OK, response);
+            } else {
+                message.reply(status_codes::InternalError);
+            }
+        } catch(json::json_exception & e) {
+            message.reply(status_codes::BadRequest);
+        }
+    });
+}
+
+void MicroserviceController::result(http_request message) {
+    message.extract_json().then([=](json::value request) {
+        try {
+            auto filename = request.at("filename").as_string();
+
+            int fail = std::system((std::string("pachctl get file predict@master:") + filename).c_str());
+            if(!fail) {
+                std::ifstream input(filename);
+                std::string content((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+                input.close();
+
+                auto response = json::value::object();
+                response["data"] = json::value::string(content);
+                response["ready"] = json::value::boolean(true);
+                message.reply(status_codes::OK, response);
+            } else {
+                auto response = json::value::object();
+                response["ready"] = json::value::boolean(false);
+                message.reply(status_codes::OK, response);
+            }
+        } catch(json::json_exception & e) {
+            message.reply(status_codes::BadRequest);
+        }
+    });
+}
+
+utility::string_t MicroserviceController::genFilename(const char *prefix) {
+    utility::string_t result(prefix);
+    result += '_';
+    result += to_iso_string(second_clock::universal_time());
+    return result;
 }

@@ -38,7 +38,7 @@ int main(int argc, const char * argv[]) {
     InterruptHandler::hookSIGINT();
 
     MicroserviceController server;
-    server.setEndpoint("http://host_auto_ip4:6502/v1/ivmero/api");
+    server.setEndpoint("http://host_auto_ip4:5000/");
     
     try {
         // wait for server initialization...
@@ -50,7 +50,7 @@ int main(int argc, const char * argv[]) {
         server.shutdown().wait();
     }
     catch(std::exception & e) {
-        std::cerr << "somehitng wrong happen! :(" << '\n';
+        std::cerr << "something wrong happen! :(" << '\n';
     }
     catch(...) {
         RuntimeUtils::printStackTrace();

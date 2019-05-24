@@ -44,8 +44,14 @@ public:
     void handleTrace(http_request message) override;
     void handleConnect(http_request message) override;
     void handleMerge(http_request message) override;
-    void initRestOpHandlers() override;    
+    void initRestOpHandlers() override;
 
 private:
     static json::value responseNotImpl(const http::method & method);
+
+    void train(http_request message);
+    void predict(http_request message);
+    void result(http_request message);
+
+    utility::string_t genFilename(const char *prefix);
 };
